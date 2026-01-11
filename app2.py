@@ -109,25 +109,21 @@ def threshold_guard(ticker):
 def jurisdiction_check(ticker):
     """
     Robust Geofencing Logic based on Ticker Suffixes.
-    [cite_start]Ref: Chapter 5 of Documentation[cite: 142].
+    Ref: Chapter 5 of Documentation.
     """
     t = ticker.upper().strip()
     
     # 1. JAPAN LOGIC
-    # Checks for .T suffix (Toyota=7203.T) or specific indices like N225
     jp_indices = ["N225", "TOPIX", "JPX400"]
     if t.endswith('.T') or t in jp_indices:
         return "JP", "FIEA Art. 162: Naked Short Ban & Uptick Rule Apply."
 
     # 2. EU LOGIC
-    # Checks for common European exchange suffixes
-    # .DE (Germany), .PA (Paris), .AS (Amsterdam), .BR (Brussels), .MI (Milan)
     eu_suffixes = ('.DE', '.PA', '.AS', '.BR', '.MI', '.MC', '.HE', '.LI')
     if t.endswith(eu_suffixes):
         return "EU", "SSR Art. 12: 'Covered' Short Only. Agreement Required."
 
     # 3. US LOGIC (Default)
-    # If there is no suffix, we assume it is a US listing (Reg SHO)
     return "US", "Reg SHO Rule 203(b)(1): Reasonable Grounds/Locate Required."
 
 # --- 3. ALPHA SOURCING ENGINE ---
@@ -158,48 +154,62 @@ def main():
         
         col1, col2, col3 = st.columns(3)
         with col1:
-            # Added tooltip to explain suffixes
-            ticker_input = st.text_input("Ticker Symbol (e.g. TSLA, 7203.T, VWAGY.DE)", value="N225").upper()
+            # FIX 1: Removed default value (value="") so it starts empty
+            ticker_input = st.text_input("Ticker Symbol (e.g. TSLA, 7203.T)", value="").upper()
         with col2:
             qty_input = st.number_input("Quantity", min_value=100, step=100)
         with col3:
-            source_input = st.selectbox("Locate Source", ["Goldman Sachs", "Morgan Stanley", "Internal"])
+            # FIX 2: Expanded the list of Locate Sources to be realistic
+            prime_brokers = [
+                "Goldman Sachs", 
+                "Morgan Stanley", 
+                "J.P. Morgan", 
+                "Bank of America", 
+                "Barclays", 
+                "UBS", 
+                "Internal Inventory", 
+                "Direct Lender"
+            ]
+            source_input = st.selectbox("Locate Source", prime_brokers)
 
-        # 1. Jurisdictional Geofencing
-        jurisdiction, rule_note = jurisdiction_check(ticker_input)
-        
-        # Dynamic color coding for jurisdiction
-        if jurisdiction == "US":
-             st.info(f"**Jurisdiction Detected:** {jurisdiction} | **Compliance Protocol:** {rule_note}")
-        elif jurisdiction == "JP":
-             st.warning(f"**Jurisdiction Detected:** {jurisdiction} | **Compliance Protocol:** {rule_note}")
-        else:
-             st.error(f"**Jurisdiction Detected:** {jurisdiction} | **Compliance Protocol:** {rule_note}")
+        # FIX 3: Wrapped logic in "if ticker_input". 
+        # The jurisdiction alert ONLY runs if the user has typed something.
+        if ticker_input:
+            
+            # 1. Jurisdictional Geofencing
+            jurisdiction, rule_note = jurisdiction_check(ticker_input)
+            
+            if jurisdiction == "US":
+                 st.info(f"**Jurisdiction Detected:** {jurisdiction} | **Compliance Protocol:** {rule_note}")
+            elif jurisdiction == "JP":
+                 st.warning(f"**Jurisdiction Detected:** {jurisdiction} | **Compliance Protocol:** {rule_note}")
+            else:
+                 st.error(f"**Jurisdiction Detected:** {jurisdiction} | **Compliance Protocol:** {rule_note}")
 
-        # 2. Threshold Guard
-        is_threshold, msg = threshold_guard(ticker_input)
-        
-        if is_threshold:
-            st.markdown(f'<div class="threshold-alert">{msg}</div>', unsafe_allow_html=True)
-            pre_borrow_id = st.text_input("MANDATORY: Pre-Borrow Agreement ID (Rule 203(b)(3))")
-            if not pre_borrow_id:
-                st.error("LOCATE BLOCKED: Threshold Security requires documented Pre-Borrow.")
-                st.stop()
-        else:
-             pre_borrow_id = "N/A"
+            # 2. Threshold Guard
+            is_threshold, msg = threshold_guard(ticker_input)
+            
+            if is_threshold:
+                st.markdown(f'<div class="threshold-alert">{msg}</div>', unsafe_allow_html=True)
+                pre_borrow_id = st.text_input("MANDATORY: Pre-Borrow Agreement ID (Rule 203(b)(3))")
+                if not pre_borrow_id:
+                    st.error("LOCATE BLOCKED: Threshold Security requires documented Pre-Borrow.")
+                    st.stop()
+            else:
+                 pre_borrow_id = "N/A"
 
-        # 3. Locate Execution
-        if st.button("EXECUTE LOCATE & HASH"):
-            chain = AuditChain()
-            tx_hash = chain.add_entry(
-                ticker_input,
-                qty_input,
-                source_input,
-                jurisdiction,
-                rule_note,
-                "TRADER_DO_01"
-            )
-            st.success(f"Locate Secured. Hash: {tx_hash}")
+            # 3. Locate Execution
+            if st.button("EXECUTE LOCATE & HASH"):
+                chain = AuditChain()
+                tx_hash = chain.add_entry(
+                    ticker_input,
+                    qty_input,
+                    source_input,
+                    jurisdiction,
+                    rule_note,
+                    "TRADER_DO_01"
+                )
+                st.success(f"Locate Secured. Hash: {tx_hash}")
 
         if 'audit_chain' in st.session_state and st.session_state.audit_chain:
             st.divider()
